@@ -22,7 +22,6 @@
     <!-- Face-API.js -->
     <script defer src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
 
-    <!-- Tailwind Configuration & Custom Styles -->
     <script>
         tailwind.config = {
             theme: {
@@ -188,6 +187,7 @@
                 <div class="w-full flex items-center justify-between mb-6">
                     <h2 class="text-2xl font-semibold text-primary"><i class="fa-solid fa-users-gear mr-2"></i> ระบบจัดการข้อมูลนักเรียน</h2>
                     <div class="flex gap-2">
+                        <!-- Settings button moved here -->
                         <button onclick="showSettings()" class="text-white bg-gray-500 hover:bg-gray-600 px-4 py-2 rounded-lg transition text-sm font-medium shadow-sm">
                             <i class="fa-solid fa-gear mr-1"></i> ตั้งค่า API
                         </button>
@@ -214,7 +214,7 @@
                 </div>
                 
                 <div class="mt-6 p-4 bg-blue-50 text-blue-800 rounded-lg text-sm">
-                    <i class="fa-solid fa-circle-info mr-2"></i> <strong>คำแนะนำ:</strong> ในเวอร์ชั่นจำลองนี้ ข้อมูลจะถูกบันทึกไว้ในเบราว์เซอร์ หากต้องการเชื่อมต่อกับ Google Sheet ในอนาคต สามารถนำ API จาก Apps Script มาเชื่อมต่อที่ฟังก์ชั่นการบันทึกได้เลย
+                    <i class="fa-solid fa-circle-info mr-2"></i> <strong>คำแนะนำ:</strong> เมื่อเชื่อมต่อ API แล้ว ข้อมูลจะซิงค์กับ Google Sheet อัตโนมัติ (หากไม่ได้เชื่อมต่อ จะเก็บข้อมูลจำลองบนเบราว์เซอร์แทน)
                 </div>
             </div>
 
@@ -225,13 +225,11 @@
         // --- GLOBAL VARIABLES & STATE ---
         let currentStream = null;
         let isModelsLoaded = false;
-        let currentStudent = null; // Store identified student data
+        let currentStudent = null; 
         
-        // Mock Database in LocalStorage
         const DB_KEY = 'sriwarin_students_db';
         let studentsDB = JSON.parse(localStorage.getItem(DB_KEY)) || [];
 
-        // API Configs (Stored in LocalStorage for testing purposes)
         let config = JSON.parse(localStorage.getItem('sriwarin_config')) || {
             geminiApiKey: '',
             telegramBotToken: '',
@@ -239,12 +237,10 @@
             googleSheetUrl: ''
         };
 
-        // FACE-API Model URL
         const MODEL_URL = 'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@0.22.2/weights';
 
-        // --- INITIALIZATION ---
+        // --- STREAMING_CHUNK:Loading System Core (Window Onload) ---
         window.onload = async () => {
-            // Load Face API models with SweetAlert Loading
             Swal.fire({
                 title: 'กำลังเตรียมระบบ AI',
                 html: 'กำลังโหลดข้อมูลและโมเดล AI...<br>อาจใช้เวลาสักครู่ในการเปิดครั้งแรก',
@@ -255,14 +251,14 @@
             });
 
             try {
-                // โหลดข้อมูลจาก Google Sheet (ถ้าตั้งค่าไว้)
+                // Sync from Google Sheet if URL exists
                 if (config.googleSheetUrl) {
                     Swal.update({ html: 'กำลังซิงค์ข้อมูลจาก Google Sheet...' });
                     try {
                         const res = await fetch(config.googleSheetUrl);
                         const data = await res.json();
                         studentsDB = data;
-                        localStorage.setItem(DB_KEY, JSON.stringify(studentsDB)); // อัปเดตข้อมูลสำรองในเครื่อง
+                        localStorage.setItem(DB_KEY, JSON.stringify(studentsDB)); 
                     } catch (e) {
                         console.error("Sheet Sync Error:", e);
                     }
@@ -274,7 +270,7 @@
                 await faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL);
                 isModelsLoaded = true;
                 Swal.close();
-                // Toast notification
+                
                 Swal.fire({
                     toast: true,
                     position: 'top-end',
@@ -284,7 +280,6 @@
                     timer: 2000
                 });
                 
-                // Start camera for Home View by default
                 startCamera('home-video');
             } catch (error) {
                 console.error("Error loading models:", error);
@@ -292,9 +287,8 @@
             }
         };
 
-        // --- UI NAVIGATION ---
+        // --- STREAMING_CHUNK:Managing UI Views ---
         function switchView(viewId) {
-            // Stop camera on view change to save resources
             stopCamera();
             
             const views = ['view-home', 'view-register', 'view-question', 'view-admin'];
@@ -307,7 +301,6 @@
 
             document.getElementById(viewId).classList.remove('hidden');
 
-            // Restart camera based on view
             if (viewId === 'view-home') {
                 startCamera('home-video');
             } else if (viewId === 'view-register') {
@@ -318,7 +311,7 @@
             }
         }
 
-        // --- STREAMING_CHUNK:Camera Handling ---
+        // --- STREAMING_CHUNK:Configuring the Web Camera ---
         async function startCamera(videoId) {
             const videoEl = document.getElementById(videoId);
             try {
@@ -326,7 +319,7 @@
                 videoEl.srcObject = stream;
                 currentStream = stream;
             } catch (err) {
-                Swal.fire('ข้อผิดพลาด', 'ไม่สามารถเข้าถึงกล้องได้ กรุณาอนุญาตการใช้งานกล้อง', 'error');
+                Swal.fire('ข้อผิดพลาด', 'ไม่สามารถเข้าถึงกล้องได้ กรุณาอนุญาตการใช้งานกล้องบนเบราว์เซอร์', 'error');
                 console.error(err);
             }
         }
@@ -338,7 +331,7 @@
             }
         }
 
-        // --- STREAMING_CHUNK:Face Registration Logic ---
+        // --- STREAMING_CHUNK:Processing Face Registration ---
         async function registerStudent() {
             if (!isModelsLoaded) return Swal.fire('รอสักครู่', 'โมเดล AI ยังโหลดไม่เสร็จ', 'warning');
 
@@ -346,7 +339,6 @@
             const name = document.getElementById('reg-name').value;
             const room = document.getElementById('reg-room').value;
 
-            // Check if ID already exists
             if (studentsDB.some(s => s.id === id)) {
                 return Swal.fire('เกิดข้อผิดพลาด', 'รหัสนักเรียนนี้มีการลงทะเบียนแล้ว', 'error');
             }
@@ -360,7 +352,6 @@
             const video = document.getElementById('register-video');
             
             try {
-                // Detect face
                 const detection = await faceapi.detectSingleFace(video).withFaceLandmarks().withFaceDescriptor();
                 
                 if (!detection) {
@@ -368,25 +359,22 @@
                     return;
                 }
 
-                // Prepare data (Convert Float32Array descriptor to standard array for JSON storage)
                 const studentData = {
                     id: id,
                     name: name,
                     room: room,
-                    descriptor: Array.from(detection.descriptor) // convert for localStorage
+                    descriptor: Array.from(detection.descriptor) 
                 };
 
-                // บันทึกผ่าน Google Sheet (ถ้ามีการตั้งค่า)
+                // Push to Google Sheet if configured
                 if (config.googleSheetUrl) {
                     await fetch(config.googleSheetUrl, {
                         method: 'POST',
-                        // ใช้ text/plain เพื่อหลีกเลี่ยงปัญหา CORS Preflight ของ Apps Script
                         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
                         body: JSON.stringify({ action: 'add', data: studentData })
                     });
                 }
 
-                // Save to DB (Local Storage สำรอง)
                 studentsDB.push(studentData);
                 localStorage.setItem(DB_KEY, JSON.stringify(studentsDB));
 
@@ -405,7 +393,7 @@
             }
         }
 
-        // --- STREAMING_CHUNK:Face Authentication Logic ---
+        // --- STREAMING_CHUNK:Running Face Authentication ---
         async function startFaceScan() {
             if (studentsDB.length === 0) {
                 return Swal.fire('ข้อมูลว่างเปล่า', 'ยังไม่มีข้อมูลนักเรียนในระบบ กรุณาลงทะเบียนก่อน', 'info');
@@ -426,18 +414,15 @@
                     return Swal.fire('ไม่พบใบหน้า', 'กรุณาขยับหน้าให้อยู่ในกรอบและมองกล้องให้ชัดเจน', 'warning');
                 }
 
-                // Create FaceMatcher with stored descriptors
                 const labeledDescriptors = studentsDB.map(student => {
                     const descFloat32 = new Float32Array(student.descriptor);
                     return new faceapi.LabeledFaceDescriptors(student.id, [descFloat32]);
                 });
 
-                // 0.6 is distance threshold. Lower is stricter.
                 const faceMatcher = new faceapi.FaceMatcher(labeledDescriptors, 0.55);
                 const bestMatch = faceMatcher.findBestMatch(detection.descriptor);
 
                 if (bestMatch.label !== 'unknown' && bestMatch.distance < 0.55) {
-                    // Match found!
                     currentStudent = studentsDB.find(s => s.id === bestMatch.label);
                     
                     Swal.fire({
@@ -447,11 +432,10 @@
                         timer: 1500,
                         showConfirmButton: false
                     }).then(() => {
-                        // Prepare Question View
                         document.getElementById('display-student-name').innerText = `สวัสดี, ${currentStudent.name}`;
                         document.getElementById('display-student-room').innerText = currentStudent.room;
                         document.getElementById('display-student-id').innerText = currentStudent.id;
-                        document.getElementById('student-feeling').value = ''; // clear old input
+                        document.getElementById('student-feeling').value = ''; 
                         switchView('view-question');
                     });
                 } else {
@@ -464,7 +448,7 @@
             }
         }
 
-        // --- STREAMING_CHUNK:AI & Telegram Integration Logic ---
+        // --- STREAMING_CHUNK:Calling Gemini AI and Telegram ---
         async function submitFeeling() {
             const text = document.getElementById('student-feeling').value.trim();
             if (!text) {
@@ -481,11 +465,9 @@
             let isAtRisk = false;
             let aiReason = "";
 
-            // Check if API keys are provided
             if (config.geminiApiKey) {
-                // Call actual Gemini API
                 try {
-                    const prompt = `วิเคราะห์ข้อความต่อไปนี้ของนักเรียนว่ามีแนวโน้มความเสี่ยงด้านสุขภาพจิตหรือไม่ (เช่น ซึมเศร้ารุนแรง, อยากทำร้ายตัวเอง, เครียดหนัก, โดนบูลลี่) 
+                    const prompt = `วิเคราะห์ข้อความต่อไปนี้ของนักเรียนว่ามีแนวโน้มความเสี่ยงด้านสุขภาพจิตหรือไม่ (เช่น ซึมเศร้ารุนแรง, อยากทำร้ายตัวเอง, เครียดหนัก, โดนบูลลี่, อยากตาย) 
                     ตอบกลับในรูปแบบ JSON เท่านั้น โครงสร้าง: {"isRisk": boolean, "reason": "เหตุผลสั้นๆ ภาษาไทย"}
                     ข้อความ: "${text}"`;
 
@@ -500,7 +482,6 @@
                     
                     if (data.candidates && data.candidates.length > 0) {
                         let aiText = data.candidates[0].content.parts[0].text;
-                        // Clean JSON markdown if exists
                         aiText = aiText.replace(/```json/g, '').replace(/```/g, '');
                         const resultJSON = JSON.parse(aiText);
                         isAtRisk = resultJSON.isRisk;
@@ -508,29 +489,25 @@
                     }
                 } catch (error) {
                     console.error('Gemini API Error:', error);
-                    // Fallback to simulation if API fails
                     const sim = simulateAIEvaluation(text);
                     isAtRisk = sim.isRisk;
                     aiReason = sim.reason;
                 }
             } else {
-                // Simulation Mode
                 const sim = simulateAIEvaluation(text);
                 isAtRisk = sim.isRisk;
                 aiReason = sim.reason;
             }
 
-            // If at risk, send notification
             if (isAtRisk) {
                 try {
                     await sendTelegramNotification(currentStudent, text, aiReason);
                 } catch (error) {
-                    // หากส่งแจ้งเตือน Error จะหยุดการทำงานชั่วคราว เพื่อให้แอดมินเห็นสาเหตุ
+                    // Stop execution to let developer read the error popup
                     return; 
                 }
             }
 
-            // Always show success to student to keep it confidential and safe
             Swal.fire({
                 icon: 'success',
                 title: 'บันทึกข้อมูลเรียบร้อย',
@@ -542,7 +519,7 @@
             });
         }
 
-        // Mock function to evaluate text if API is missing
+        // --- STREAMING_CHUNK:Simulating AI (Fallback Mode) ---
         function simulateAIEvaluation(text) {
             const riskKeywords = ['ตาย', 'ไม่อยากอยู่', 'เหนื่อยมาก', 'ร้องไห้', 'เศร้า', 'โดนแกล้ง', 'เครียด', 'ทรมาน'];
             const foundRisk = riskKeywords.some(keyword => text.includes(keyword));
@@ -552,6 +529,7 @@
             };
         }
 
+        // --- STREAMING_CHUNK:Sending Alert to Telegram ---
         async function sendTelegramNotification(student, message, reason) {
             const msg = `🚨 <b>แจ้งเตือนความเสี่ยงสุขภาพจิตนักเรียน</b>\n\n` +
                         `👤 <b>ชื่อ:</b> ${student.name}\n` +
@@ -574,7 +552,7 @@
                     
                     const data = await response.json();
                     
-                    // ดักจับ Error จาก Telegram API
+                    // Catch Telegram API Error accurately
                     if (!response.ok) {
                         console.error('Telegram API Error:', data);
                         Swal.fire({
@@ -589,11 +567,9 @@
                     throw error;
                 }
             } else {
-                // Simulation notification
                 console.log("=== SIMULATED TELEGRAM NOTIFICATION ===");
-                console.log(msg.replace(/<[^>]*>?/gm, '')); // log without HTML tags
+                console.log(msg.replace(/<[^>]*>?/gm, '')); 
                 
-                // สำหรับผู้พัฒนา: เปลี่ยนจาก Toast เป็น Modal เพื่อให้กดตกลงก่อน ไม่โดนเด้งทับ
                 await Swal.fire({
                     icon: 'warning',
                     title: 'โหมดจำลอง (ยังไม่ได้ใส่ API)',
@@ -603,7 +579,7 @@
             }
         }
 
-        // --- STREAMING_CHUNK:Admin Operations (CRUD) ---
+        // --- STREAMING_CHUNK:Verifying Admin Auth Backend ---
         function promptAdminLogin() {
             Swal.fire({
                 title: 'เข้าสู่ระบบผู้ดูแลระบบ',
@@ -621,14 +597,12 @@
                 confirmButtonColor: '#1e3a8a',
                 showLoaderOnConfirm: true,
                 preConfirm: async (pin) => {
-                    // หากยังไม่ได้เชื่อมต่อ Google Sheet ให้ใช้โหมดจำลองชั่วคราว
                     if (!config.googleSheetUrl) {
                         if (pin === '999999') return true;
                         Swal.showValidationMessage('รหัส PIN ไม่ถูกต้อง (โหมดจำลองใช้ 999999)');
                         return false;
                     }
                     
-                    // หากเชื่อมต่อแล้ว ให้ส่งรหัสไปตรวจที่ระบบหลังบ้าน (Google Apps Script)
                     try {
                         const response = await fetch(config.googleSheetUrl, {
                             method: 'POST',
@@ -641,7 +615,7 @@
                             Swal.showValidationMessage(data.message || 'รหัส PIN ไม่ถูกต้อง');
                             return false;
                         }
-                        return true; // รหัสถูกต้อง
+                        return true; 
                     } catch (error) {
                         Swal.showValidationMessage(`การเชื่อมต่อระบบหลังบ้านขัดข้อง`);
                         return false;
@@ -658,6 +632,7 @@
             });
         }
 
+        // --- STREAMING_CHUNK:Rendering Admin CRUD Table ---
         function renderAdminTable() {
             const tbody = document.getElementById('admin-table-body');
             tbody.innerHTML = '';
@@ -667,7 +642,7 @@
                 return;
             }
 
-            studentsDB.forEach((student, index) => {
+            studentsDB.forEach((student) => {
                 const tr = document.createElement('tr');
                 tr.className = "border-b hover:bg-gray-50 transition";
                 tr.innerHTML = `
@@ -687,6 +662,7 @@
             });
         }
 
+        // --- STREAMING_CHUNK:Updating Student Data (Edit) ---
         function editStudent(id) {
             const student = studentsDB.find(s => s.id === id);
             if(!student) return;
@@ -713,7 +689,6 @@
                     student.name = result.value.name;
                     student.room = result.value.room;
 
-                    // อัปเดตไปยัง Google Sheet
                     if (config.googleSheetUrl) {
                         try {
                             await fetch(config.googleSheetUrl, {
@@ -731,6 +706,7 @@
             });
         }
 
+        // --- STREAMING_CHUNK:Removing Student Data (Delete) ---
         function deleteStudent(id) {
             Swal.fire({
                 title: 'ยืนยันการลบ?',
@@ -745,7 +721,6 @@
                 if (result.isConfirmed) {
                     Swal.fire({ title: 'กำลังลบข้อมูล...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
 
-                    // สั่งลบจาก Google Sheet
                     if (config.googleSheetUrl) {
                         try {
                             await fetch(config.googleSheetUrl, {
@@ -764,7 +739,7 @@
             });
         }
 
-        // --- STREAMING_CHUNK:Settings (API Keys for Real DB/AI connection) ---
+        // --- STREAMING_CHUNK:Configuring System Setup (Settings) ---
         function showSettings() {
             Swal.fire({
                 title: 'ตั้งค่าระบบ API & Database',
@@ -795,60 +770,8 @@
                     config = result.value;
                     localStorage.setItem('sriwarin_config', JSON.stringify(config));
                     Swal.fire('บันทึกสำเร็จ', 'อัปเดตการตั้งค่าเรียบร้อยแล้ว<br>ระบบจะรีเฟรช 1 ครั้งเพื่อซิงค์ข้อมูล', 'success').then(() => {
-                        window.location.reload(); // รีเฟรชหน้า 1 ครั้งเพื่อให้โหลดข้อมูล Sheet ใหม่
+                        window.location.reload(); 
                     });
-                }
-            });
-        }
-
-        function deleteStudent(id) {
-            Swal.fire({
-                title: 'ยืนยันการลบ?',
-                text: "ข้อมูลใบหน้าและรายละเอียดจะถูกลบถาวร!",
-                icon: 'warning',
-                showCancelButton: true,
-                confirmButtonColor: '#d33',
-                cancelButtonColor: '#3085d6',
-                confirmButtonText: 'ใช่, ลบเลย',
-                cancelButtonText: 'ยกเลิก'
-            }).then((result) => {
-                if (result.isConfirmed) {
-                    studentsDB = studentsDB.filter(s => s.id !== id);
-                    localStorage.setItem(DB_KEY, JSON.stringify(studentsDB));
-                    renderAdminTable();
-                    Swal.fire('ลบแล้ว!', 'ข้อมูลนักเรียนถูกลบออกจากระบบ', 'success');
-                }
-            });
-        }
-
-        // --- STREAMING_CHUNK:Settings (API Keys for Real DB/AI connection) ---
-        function showSettings() {
-            Swal.fire({
-                title: 'ตั้งค่าระบบ API',
-                html:
-                    `<p class="text-sm text-gray-500 mb-4 text-left">หากเว้นว่าง ระบบจะใช้ <strong>Simulation Mode</strong> ในการทำงานอัตโนมัติ</p>` +
-                    `<div class="text-left mb-2 text-sm font-bold">Gemini API Key:</div>` +
-                    `<input id="swal-gemini" class="swal2-input m-0 w-full mb-4" placeholder="AI Key" value="${config.geminiApiKey}">` +
-                    `<div class="text-left mb-2 text-sm font-bold">Telegram Bot Token:</div>` +
-                    `<input id="swal-tg-token" class="swal2-input m-0 w-full mb-4" placeholder="Bot Token" value="${config.telegramBotToken}">` +
-                    `<div class="text-left mb-2 text-sm font-bold">Telegram Chat ID (ครูแนะแนว):</div>` +
-                    `<input id="swal-tg-chat" class="swal2-input m-0 w-full" placeholder="Chat ID" value="${config.telegramChatId}">`,
-                focusConfirm: false,
-                showCancelButton: true,
-                confirmButtonText: 'บันทึกการตั้งค่า',
-                cancelButtonText: 'ปิด',
-                preConfirm: () => {
-                    return {
-                        geminiApiKey: document.getElementById('swal-gemini').value.trim(),
-                        telegramBotToken: document.getElementById('swal-tg-token').value.trim(),
-                        telegramChatId: document.getElementById('swal-tg-chat').value.trim()
-                    }
-                }
-            }).then((result) => {
-                if (result.isConfirmed) {
-                    config = result.value;
-                    localStorage.setItem('sriwarin_config', JSON.stringify(config));
-                    Swal.fire('บันทึกสำเร็จ', 'อัปเดตการเชื่อมต่อ API เรียบร้อยแล้ว', 'success');
                 }
             });
         }
