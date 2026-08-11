@@ -480,6 +480,12 @@
                     });
                     const data = await res.json();
                     
+                    // เพิ่มการดัก Error ถ้ารหัส API ของ Gemini ผิดหรือมีปัญหา
+                    if (!res.ok || data.error) {
+                        console.error('Gemini Error:', data.error);
+                        throw new Error('Gemini API ขัดข้อง หรือ Key ผิด');
+                    }
+                    
                     if (data.candidates && data.candidates.length > 0) {
                         let aiText = data.candidates[0].content.parts[0].text;
                         aiText = aiText.replace(/```json/g, '').replace(/```/g, '');
@@ -488,7 +494,8 @@
                         aiReason = resultJSON.reason;
                     }
                 } catch (error) {
-                    console.error('Gemini API Error:', error);
+                    console.error('AI Error (Switching to Simulation):', error);
+                    // หาก AI ผิดพลาด ให้สลับมาใช้โหมดดักคำ (Simulation) อัตโนมัติ
                     const sim = simulateAIEvaluation(text);
                     isAtRisk = sim.isRisk;
                     aiReason = sim.reason;
@@ -503,7 +510,7 @@
                 try {
                     await sendTelegramNotification(currentStudent, text, aiReason);
                 } catch (error) {
-                    // Stop execution to let developer read the error popup
+                    // หยุดการทำงานถ้าส่ง Telegram ไม่ผ่าน เพื่อให้แอดมินอ่านหน้าจอ Error
                     return; 
                 }
             }
@@ -525,7 +532,7 @@
             const foundRisk = riskKeywords.some(keyword => text.includes(keyword));
             return {
                 isRisk: foundRisk,
-                reason: foundRisk ? "[Simulation] ตรวจพบคำที่แสดงถึงความเศร้าหรือความเครียดสูง" : "อารมณ์ปกติ"
+                reason: foundRisk ? "[ระบบสำรอง] ตรวจพบคำที่แสดงถึงความเสี่ยง (เช่น เหนื่อย, ตาย, เศร้า)" : "อารมณ์ปกติ"
             };
         }
 
@@ -544,7 +551,7 @@
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
-                            chat_id: config.telegramChatId,
+                            chat_id: String(config.telegramChatId).trim(),
                             text: msg,
                             parse_mode: 'HTML'
                         })
@@ -552,18 +559,19 @@
                     
                     const data = await response.json();
                     
-                    // Catch Telegram API Error accurately
                     if (!response.ok) {
                         console.error('Telegram API Error:', data);
                         Swal.fire({
                             icon: 'error',
                             title: 'แจ้งผู้พัฒนา: Telegram ขัดข้อง',
-                            text: `ส่งข้อความไม่สำเร็จ สาเหตุ: ${data.description}`
+                            html: `<b>ส่งแจ้งเตือนไม่สำเร็จ</b><br><br>สาเหตุ: ${data.description}<br><br><span class="text-sm text-red-500">กรุณาตรวจสอบให้แน่ใจว่า: <br>1. Chat ID ถูกต้อง<br>2. คุณได้ทักแชทบอทไปก่อนแล้วอย่างน้อย 1 ครั้ง</span>`
                         });
                         throw new Error(data.description);
                     }
                 } catch (error) {
-                    console.error('Telegram API Fetch Error:', error);
+                    if(!Swal.isVisible()) {
+                        Swal.fire('ข้อผิดพลาด', 'ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ Telegram ได้', 'error');
+                    }
                     throw error;
                 }
             } else {
