@@ -3,786 +3,823 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sriwarin Care - Student Mental Health Screening</title>
-    
-    <!-- Tailwind CSS -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    
+    <title>Sriwarin Care - ระบบคัดกรองสุขภาพจิตนักเรียน</title>
+
     <!-- Google Fonts: Kanit -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     
-    <!-- SweetAlert2 -->
-    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-    
     <!-- Font Awesome -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     
-    <!-- Face-API.js -->
-    <script defer src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
+    <!-- SweetAlert2 -->
+    <link href="https://cdn.jsdelivr.net/npm/sweetalert2@11.7.32/dist/sweetalert2.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11.7.32/dist/sweetalert2.all.min.js"></script>
 
+    <!-- Face API (TensorFlow) -->
+    <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
+
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
     <script>
         tailwind.config = {
             theme: {
                 extend: {
                     fontFamily: {
-                        sans: ['Kanit', 'sans-serif'],
+                        kanit: ['Kanit', 'sans-serif'],
                     },
                     colors: {
-                        primary: '#1e3a8a', /* Blue 900 */
-                        secondary: '#ec4899', /* Pink 500 */
-                        primaryLight: '#3b82f6',
-                        secondaryLight: '#f472b6',
+                        sriBlue: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                        },
+                        sriPink: {
+                            50: '#fdf2f8',
+                            100: '#fce7f3',
+                            500: '#ec4899',
+                            600: '#db2777',
+                            700: '#be185d',
+                        }
                     }
                 }
             }
         }
     </script>
+
     <style>
         body {
             font-family: 'Kanit', sans-serif;
-            background: linear-gradient(135deg, #eff6ff 0%, #fdf2f8 100%);
+            background: linear-gradient(135deg, #eff6ff 0%, #fce7f3 100%);
             min-height: 100vh;
         }
         
-        .glass-panel {
-            background: rgba(255, 255, 255, 0.85);
-            backdrop-filter: blur(10px);
-            border: 1px solid rgba(255, 255, 255, 0.3);
-            box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.15);
-        }
-
-        .video-container {
+        /* สไตล์สำหรับกล้องและ Canvas (Face API) */
+        .camera-container {
             position: relative;
             width: 100%;
             max-width: 500px;
             margin: 0 auto;
             border-radius: 1rem;
             overflow: hidden;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
             background-color: #000;
         }
 
-        video {
+        #video-element, #admin-video-element {
             width: 100%;
             height: auto;
             display: block;
+            object-fit: cover;
         }
 
-        canvas {
+        #overlay-canvas, #admin-overlay-canvas {
             position: absolute;
             top: 0;
             left: 0;
             width: 100%;
             height: 100%;
+            z-index: 10;
         }
 
-        .fade-in {
+        /* ซ่อน element พื้นฐาน */
+        .view-section {
+            display: none;
             animation: fadeIn 0.4s ease-in-out;
+        }
+        .view-section.active {
+            display: block;
         }
 
         @keyframes fadeIn {
             from { opacity: 0; transform: translateY(10px); }
             to { opacity: 1; transform: translateY(0); }
         }
+
+        /* Loading Screen */
+        #global-loader {
+            position: fixed;
+            inset: 0;
+            background: rgba(255,255,255,0.9);
+            z-index: 9999;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+        }
+        
+        .loader-spinner {
+            border: 5px solid #f3f3f3;
+            border-top: 5px solid #db2777;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
     </style>
 </head>
-<body class="text-gray-800 antialiased flex flex-col items-center justify-center py-6 px-4">
+<body class="text-gray-800 antialiased relative pb-10">
 
-    <div class="w-full max-w-4xl glass-panel rounded-2xl shadow-2xl overflow-hidden relative">
-        
-        <!-- Header -->
-        <header class="bg-gradient-to-r from-primary to-secondary text-white p-6 text-center relative">
-            <h1 class="text-3xl font-bold tracking-wider"><i class="fa-solid fa-heart-pulse mr-2"></i> SRIWARIN CARE</h1>
-            <p class="text-sm opacity-90 mt-1">ระบบคัดกรองสุขภาพจิตนักเรียน</p>
-        </header>
+    <div id="global-loader">
+        <div class="loader-spinner mb-4"></div>
+        <h2 class="text-xl font-bold text-sriBlue-700">กำลังโหลดโมเดล AI สแกนใบหน้า...</h2>
+        <p class="text-gray-500 mt-2 text-sm text-center px-4">กรุณารอสักครู่ อาจใช้เวลา 10-20 วินาทีในครั้งแรก</p>
+    </div>
 
-        <div class="p-6 md:p-10 min-h-[500px] flex flex-col items-center justify-center relative">
-            
-            <!-- VIEW 1: HOME (Face Scan) -->
-            <div id="view-home" class="w-full fade-in flex flex-col items-center">
-                <div class="text-center mb-6">
-                    <h2 class="text-2xl font-semibold text-primary mb-2">สแกนใบหน้าเพื่อเข้าสู่ระบบ</h2>
-                    <p class="text-gray-500">กรุณามองกล้องเพื่อยืนยันตัวตน</p>
+    <nav class="bg-white/80 backdrop-blur-md shadow-sm sticky top-0 z-50">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between h-16">
+                <div class="flex items-center cursor-pointer" onclick="app.navigate('home')">
+                    <i class="fa-solid fa-heart-pulse text-sriPink-600 text-2xl mr-2"></i>
+                    <span class="font-bold text-xl bg-clip-text text-transparent bg-gradient-to-r from-sriBlue-600 to-sriPink-600">
+                        Sriwarin Care
+                    </span>
                 </div>
+                <div class="flex items-center">
+                    <button onclick="app.navigate('admin-login')" class="text-gray-500 hover:text-sriBlue-600 transition p-2 rounded-md">
+                        <i class="fa-solid fa-user-shield text-xl"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Container -->
+    <main class="max-w-4xl mx-auto px-4 mt-8">
+
+        <section id="view-home" class="view-section active text-center">
+            <div class="bg-white rounded-3xl shadow-xl p-8 md:p-12 border border-gray-100">
+                <div class="w-24 h-24 bg-sriBlue-100 text-sriBlue-600 rounded-full flex items-center justify-center mx-auto mb-6">
+                    <i class="fa-solid fa-face-smile text-5xl"></i>
+                </div>
+                <h1 class="text-3xl md:text-4xl font-bold mb-4 text-gray-800">ยินดีต้อนรับสู่ Sriwarin Care</h1>
+                <p class="text-gray-500 mb-8 max-w-md mx-auto">ระบบดูแลและคัดกรองความรู้สึกของนักเรียน ให้นักเรียนสแกนใบหน้าเพื่อเข้าสู่ระบบประเมิน</p>
                 
-                <div class="video-container mb-8">
-                    <video id="home-video" autoplay muted playsinline></video>
-                    <canvas id="home-canvas"></canvas>
-                </div>
-
-                <div class="flex flex-col sm:flex-row gap-4 w-full max-w-md">
-                    <button onclick="startFaceScan()" id="btn-scan" class="flex-1 bg-secondary hover:bg-pink-600 text-white font-semibold py-3 px-6 rounded-xl shadow-lg transition transform hover:scale-105">
-                        <i class="fa-solid fa-camera mr-2"></i> สแกนใบหน้า
-                    </button>
-                </div>
-
-                <div class="mt-12 flex justify-between w-full max-w-md border-t pt-6 border-gray-200">
-                    <button onclick="switchView('view-admin-login')" class="text-primary hover:text-blue-700 font-medium transition">
-                        <i class="fa-solid fa-user-shield mr-1"></i> สำหรับผู้ดูแลระบบ
-                    </button>
-                    <button onclick="switchView('view-register')" class="text-secondary hover:text-pink-600 font-medium transition">
-                        <i class="fa-solid fa-user-plus mr-1"></i> ลงทะเบียนนักเรียนใหม่
-                    </button>
-                </div>
-            </div>
-
-            <!-- VIEW 2: REGISTER -->
-            <div id="view-register" class="w-full fade-in hidden flex-col items-center max-w-lg mx-auto">
-                <div class="w-full flex items-center justify-between mb-6">
-                    <button onclick="switchView('view-home')" class="text-gray-500 hover:text-primary transition">
-                        <i class="fa-solid fa-arrow-left text-xl"></i>
-                    </button>
-                    <h2 class="text-2xl font-semibold text-primary">ลงทะเบียนใบหน้า</h2>
-                    <div class="w-6"></div> <!-- Spacer -->
-                </div>
-
-                <div class="video-container mb-6 w-full max-w-sm">
-                    <video id="register-video" autoplay muted playsinline></video>
-                    <canvas id="register-canvas"></canvas>
-                </div>
+                <button onclick="app.startStudentScan()" class="bg-gradient-to-r from-sriBlue-600 to-sriPink-600 hover:from-sriBlue-700 hover:to-sriPink-700 text-white font-bold py-4 px-10 rounded-full shadow-lg transform transition hover:scale-105 text-xl flex items-center justify-center mx-auto w-full md:w-auto">
+                    <i class="fa-solid fa-camera mr-3"></i> นักเรียนสแกนใบหน้า
+                </button>
                 
-                <form id="register-form" class="w-full space-y-4" onsubmit="event.preventDefault(); registerStudent();">
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-1">เลขประจำตัวนักเรียน</label>
-                        <input type="text" id="reg-id" required class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-secondary focus:border-transparent outline-none">
-                    </div>
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-1">ชื่อ - นามสกุล</label>
-                        <input type="text" id="reg-name" required class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-secondary focus:border-transparent outline-none">
-                    </div>
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-1">ห้องเรียน (เช่น ม.4/1)</label>
-                        <input type="text" id="reg-room" required class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-secondary focus:border-transparent outline-none">
-                    </div>
-                    <button type="submit" class="w-full bg-primary hover:bg-blue-800 text-white font-semibold py-3 px-6 rounded-xl shadow-lg transition mt-4">
-                        <i class="fa-solid fa-save mr-2"></i> บันทึกข้อมูลและใบหน้า
-                    </button>
-                </form>
-            </div>
-
-            <!-- VIEW 3: QUESTIONNAIRE (After Scan) -->
-            <div id="view-question" class="w-full fade-in hidden flex-col items-center max-w-lg mx-auto">
-                <div class="text-center mb-8 w-full">
-                    <div class="inline-block bg-blue-100 text-primary p-4 rounded-full mb-4">
-                        <i class="fa-solid fa-user-graduate text-4xl"></i>
-                    </div>
-                    <h2 class="text-2xl font-bold text-gray-800" id="display-student-name">สวัสดี, [ชื่อ]</h2>
-                    <p class="text-secondary font-medium mt-1">ห้อง <span id="display-student-room">[ห้อง]</span> | รหัส <span id="display-student-id">[รหัส]</span></p>
-                </div>
-
-                <div class="w-full bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-                    <label class="block text-lg font-semibold text-primary mb-3"><i class="fa-solid fa-comment-medical mr-2"></i> วันนี้นักเรียนรู้สึกอย่างไรบ้าง?</label>
-                    <textarea id="student-feeling" rows="4" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-secondary focus:border-transparent outline-none resize-none placeholder-gray-400" placeholder="ระบายความรู้สึกของคุณที่นี่ (เช่น วันนี้เหนื่อยมาก เครียดเรื่องเรียน...)" required></textarea>
-                    
-                    <button onclick="submitFeeling()" class="w-full bg-gradient-to-r from-secondary to-pink-600 hover:from-pink-600 hover:to-pink-700 text-white font-bold py-3 px-6 rounded-xl shadow-lg transition mt-4">
-                        ส่งคำตอบ <i class="fa-solid fa-paper-plane ml-2"></i>
+                <div class="mt-12 pt-6 border-t border-gray-200">
+                    <p class="text-sm text-gray-400 mb-3">สำหรับเจ้าหน้าที่ / แอดมิน</p>
+                    <button onclick="app.navigate('admin-login')" class="text-sriBlue-600 hover:text-sriBlue-800 font-medium underline text-sm">
+                        เข้าสู่ระบบผู้ดูแลระบบ (Admin)
                     </button>
                 </div>
             </div>
+        </section>
 
-            <!-- VIEW 4: ADMIN DASHBOARD -->
-            <div id="view-admin" class="w-full fade-in hidden flex-col">
-                <div class="w-full flex items-center justify-between mb-6">
-                    <h2 class="text-2xl font-semibold text-primary"><i class="fa-solid fa-users-gear mr-2"></i> ระบบจัดการข้อมูลนักเรียน</h2>
+        <section id="view-student-scan" class="view-section">
+            <div class="bg-white rounded-3xl shadow-xl p-6 md:p-8 border border-gray-100 text-center">
+                <h2 class="text-2xl font-bold mb-2 text-gray-800"><i class="fa-solid fa-expand text-sriBlue-600 mr-2"></i> สแกนใบหน้าเพื่อยืนยันตัวตน</h2>
+                <p class="text-gray-500 mb-6 text-sm">กรุณามองกล้องและจัดใบหน้าให้อยู่ในกรอบ ระบบจะยืนยันตัวตนอัตโนมัติ</p>
+                
+                <div class="camera-container mb-6">
+                    <video id="video-element" autoplay muted playsinline></video>
+                    <canvas id="overlay-canvas"></canvas>
+                </div>
+
+                <div class="flex justify-center space-x-4">
+                    <button onclick="app.stopStudentScan()" class="bg-gray-200 hover:bg-gray-300 text-gray-700 font-semibold py-2 px-6 rounded-full transition">
+                        <i class="fa-solid fa-arrow-left mr-2"></i> ยกเลิก
+                    </button>
+                </div>
+                <div id="scan-status" class="mt-4 text-sriBlue-600 font-medium animate-pulse">กำลังวิเคราะห์ใบหน้า...</div>
+            </div>
+        </section>
+
+        <section id="view-student-assessment" class="view-section">
+            <div class="bg-white rounded-3xl shadow-xl p-6 md:p-10 border border-gray-100">
+                <div class="flex items-center space-x-4 mb-8 bg-sriBlue-50 p-4 rounded-xl border border-sriBlue-100">
+                    <div class="w-16 h-16 bg-gradient-to-br from-sriBlue-400 to-sriPink-400 rounded-full flex items-center justify-center text-white text-2xl shadow-inner font-bold">
+                        <i class="fa-solid fa-user"></i>
+                    </div>
+                    <div>
+                        <p class="text-sm text-gray-500">ข้อมูลนักเรียน</p>
+                        <h3 id="display-student-name" class="text-xl font-bold text-gray-800">ชื่อ-นามสกุล</h3>
+                        <p id="display-student-class" class="text-sriBlue-600 font-medium">ห้องเรียน</p>
+                    </div>
+                </div>
+
+                <div class="mb-6">
+                    <label class="block text-2xl font-bold text-gray-800 mb-4 text-center">
+                        " วันนี้นักเรียนรู้สึกอย่างไรบ้าง? "
+                    </label>
+                    <p class="text-center text-gray-500 mb-4 text-sm">พิมพ์เล่าความรู้สึกของหนูในวันนี้ให้ครูฟังได้เลยนะ (ไม่มีผิดมีถูก)</p>
+                    <textarea id="assessment-text" rows="5" class="w-full px-4 py-4 border-2 border-gray-200 rounded-2xl focus:border-sriPink-500 focus:ring focus:ring-sriPink-200 transition outline-none text-lg resize-none" placeholder="หนูรู้สึก..."></textarea>
+                </div>
+
+                <div class="flex flex-col sm:flex-row justify-between gap-4">
+                    <button onclick="app.cancelAssessment()" class="w-full sm:w-1/3 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold py-3 px-6 rounded-full transition">
+                        ยกเลิก
+                    </button>
+                    <button onclick="app.submitAssessment()" class="w-full sm:w-2/3 bg-sriPink-600 hover:bg-sriPink-700 text-white font-bold py-3 px-6 rounded-full shadow-lg transition transform hover:-translate-y-1">
+                        <i class="fa-solid fa-paper-plane mr-2"></i> ส่งความรู้สึก
+                    </button>
+                </div>
+            </div>
+        </section>
+
+        <section id="view-admin-login" class="view-section">
+            <div class="bg-white rounded-3xl shadow-xl p-8 md:p-12 border border-gray-100 max-w-md mx-auto text-center">
+                <div class="w-20 h-20 bg-gray-100 text-gray-600 rounded-full flex items-center justify-center mx-auto mb-6">
+                    <i class="fa-solid fa-lock text-3xl"></i>
+                </div>
+                <h2 class="text-2xl font-bold mb-2 text-gray-800">เข้าสู่ระบบ Admin</h2>
+                <p class="text-gray-500 mb-6 text-sm">กรุณากรอกรหัส PIN 6 หลัก</p>
+                
+                <input type="password" id="admin-pin" class="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-sriBlue-500 focus:ring focus:ring-sriBlue-200 transition outline-none text-center text-2xl tracking-[0.5em] mb-6" placeholder="******" maxlength="6">
+                
+                <button onclick="app.loginAdmin()" class="w-full bg-gray-800 hover:bg-gray-900 text-white font-bold py-3 px-6 rounded-xl shadow transition mb-4">
+                    เข้าสู่ระบบ
+                </button>
+                <button onclick="app.navigate('home')" class="text-gray-500 hover:text-gray-800 text-sm">
+                    กลับหน้าหลัก
+                </button>
+            </div>
+        </section>
+
+        <section id="view-admin-dashboard" class="view-section">
+            <div class="bg-white rounded-3xl shadow-xl p-6 border border-gray-100">
+                <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
+                    <div>
+                        <h2 class="text-2xl font-bold text-gray-800"><i class="fa-solid fa-users-gear text-sriBlue-600 mr-2"></i> จัดการข้อมูลนักเรียน</h2>
+                        <p class="text-gray-500 text-sm">เพิ่ม / ลบ / แก้ไข ข้อมูลนักเรียนและใบหน้า</p>
+                    </div>
                     <div class="flex gap-2">
-                        <!-- Settings button moved here -->
-                        <button onclick="showSettings()" class="text-white bg-gray-500 hover:bg-gray-600 px-4 py-2 rounded-lg transition text-sm font-medium shadow-sm">
-                            <i class="fa-solid fa-gear mr-1"></i> ตั้งค่า API
+                        <button onclick="app.openRegisterFace()" class="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-lg font-medium transition flex items-center shadow">
+                            <i class="fa-solid fa-user-plus mr-2"></i> ลงทะเบียนนักเรียนใหม่
                         </button>
-                        <button onclick="switchView('view-home')" class="text-white bg-red-500 hover:bg-red-600 px-4 py-2 rounded-lg transition text-sm font-medium shadow-sm">
-                            <i class="fa-solid fa-sign-out-alt mr-1"></i> ออกจากระบบ
+                        <button onclick="app.navigate('home')" class="bg-gray-200 hover:bg-gray-300 text-gray-700 px-4 py-2 rounded-lg font-medium transition">
+                            <i class="fa-solid fa-right-from-bracket"></i> ออก
                         </button>
                     </div>
                 </div>
 
-                <div class="overflow-x-auto bg-white rounded-xl shadow border border-gray-100">
-                    <table class="w-full text-left border-collapse">
-                        <thead>
-                            <tr class="bg-gray-50 text-gray-600 text-sm uppercase tracking-wider">
-                                <th class="p-4 border-b">รหัสนักเรียน</th>
-                                <th class="p-4 border-b">ชื่อ - นามสกุล</th>
-                                <th class="p-4 border-b">ห้องเรียน</th>
-                                <th class="p-4 border-b text-center">จัดการ (CRUD)</th>
+                <div class="overflow-x-auto rounded-xl border border-gray-200">
+                    <table class="min-w-full divide-y divide-gray-200">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">รหัสนักเรียน</th>
+                                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ชื่อ - นามสกุล</th>
+                                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ห้องเรียน</th>
+                                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ข้อมูลใบหน้า</th>
+                                <th scope="col" class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">จัดการ</th>
                             </tr>
                         </thead>
-                        <tbody id="admin-table-body" class="text-gray-700">
-                            <!-- Data injected via JS -->
+                        <tbody id="student-table-body" class="bg-white divide-y divide-gray-200">
+                            <!-- แถวข้อมูลนักเรียนจะถูกสร้างที่นี่โดย JS -->
                         </tbody>
                     </table>
                 </div>
                 
-                <div class="mt-6 p-4 bg-blue-50 text-blue-800 rounded-lg text-sm">
-                    <i class="fa-solid fa-circle-info mr-2"></i> <strong>คำแนะนำ:</strong> เมื่อเชื่อมต่อ API แล้ว ข้อมูลจะซิงค์กับ Google Sheet อัตโนมัติ (หากไม่ได้เชื่อมต่อ จะเก็บข้อมูลจำลองบนเบราว์เซอร์แทน)
+                <div id="empty-student-state" class="hidden py-12 text-center text-gray-500">
+                    <i class="fa-solid fa-folder-open text-4xl mb-3 text-gray-300"></i>
+                    <p>ยังไม่มีข้อมูลนักเรียน กรุณาลงทะเบียน</p>
                 </div>
             </div>
+        </section>
 
-        </div>
-    </div>
+        <section id="view-admin-register" class="view-section">
+            <div class="bg-white rounded-3xl shadow-xl p-6 md:p-8 border border-gray-100 max-w-2xl mx-auto">
+                <div class="flex justify-between items-center mb-6">
+                    <h2 class="text-2xl font-bold text-gray-800" id="register-title"><i class="fa-solid fa-face-viewfinder text-sriPink-600 mr-2"></i> ลงทะเบียนใบหน้า</h2>
+                    <button onclick="app.closeRegisterFace()" class="text-gray-400 hover:text-gray-700"><i class="fa-solid fa-xmark text-xl"></i></button>
+                </div>
+
+                <!-- Form Data -->
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">รหัสนักเรียน *</label>
+                        <input type="text" id="reg-student-id" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:border-sriBlue-500 focus:outline-none" placeholder="เช่น 64001">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">ห้องเรียน *</label>
+                        <input type="text" id="reg-classroom" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:border-sriBlue-500 focus:outline-none" placeholder="เช่น ม.4/1">
+                    </div>
+                    <div class="md:col-span-2">
+                        <label class="block text-sm font-medium text-gray-700 mb-1">ชื่อ - นามสกุล *</label>
+                        <input type="text" id="reg-name" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:border-sriBlue-500 focus:outline-none" placeholder="ด.ช. / ด.ญ. ...">
+                    </div>
+                </div>
+
+                <!-- Camera for Register -->
+                <div class="camera-container mb-4">
+                    <video id="admin-video-element" autoplay muted playsinline></video>
+                    <canvas id="admin-overlay-canvas"></canvas>
+                </div>
+
+                <div class="flex justify-between items-center bg-gray-50 p-4 rounded-xl">
+                    <div class="text-sm" id="reg-face-status">
+                        <span class="text-red-500 font-medium"><i class="fa-solid fa-circle-xmark mr-1"></i> ยังไม่ได้บันทึกใบหน้า</span>
+                    </div>
+                    <button onclick="app.captureAndSaveFace()" id="btn-capture-face" class="bg-sriBlue-600 hover:bg-sriBlue-700 text-white font-medium py-2 px-6 rounded-lg transition shadow">
+                        <i class="fa-solid fa-camera mr-2"></i> สแกนเพื่อบันทึก
+                    </button>
+                </div>
+            </div>
+        </section>
+
+    </main>
 
     <script>
-        // --- GLOBAL VARIABLES & STATE ---
-        let currentStream = null;
-        let isModelsLoaded = false;
-        let currentStudent = null; 
+        // --- 1. Global Configurations ---
+        const TELEGRAM_TOKEN = '8878975205:AAH1GwaMDX5BP3vZn2clJTw8Tt6xoWtzMuI';
+        const TELEGRAM_CHAT_ID = '7925080260';
         
+        // Canvas Runtime Gemini Key is automatically provided when empty string is used
+        const GEMINI_API_KEY = ""; 
+        const GEMINI_MODEL = "gemini-3-flash-preview";
+
+        // Constants & State
+        const ADMIN_PIN = '999999';
         const DB_KEY = 'sriwarin_students_db';
-        let studentsDB = JSON.parse(localStorage.getItem(DB_KEY)) || [];
+        
+        const app = {
+            students: [], // [{ id, studentId, name, classroom, descriptorArray }]
+            faceMatcher: null,
+            currentStream: null,
+            scanInterval: null,
+            activeStudent: null, // นักเรียนที่กำลังประเมิน
+            modelsLoaded: false,
+            
+            // --- 2. Initialization ---
+            async init() {
+                try {
+                    this.loadData();
+                    await this.loadFaceModels();
+                    this.buildFaceMatcher();
+                    
+                    document.getElementById('global-loader').style.display = 'none';
+                    this.navigate('home');
+                    
+                    // Add Enter key listener for Admin Login
+                    document.getElementById('admin-pin').addEventListener('keypress', function (e) {
+                        if (e.key === 'Enter') {
+                            app.loginAdmin();
+                        }
+                    });
 
-        let config = JSON.parse(localStorage.getItem('sriwarin_config')) || {
-            geminiApiKey: '',
-            telegramBotToken: '',
-            telegramChatId: '',
-            googleSheetUrl: ''
-        };
-
-        const MODEL_URL = 'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@0.22.2/weights';
-
-        // --- STREAMING_CHUNK:Loading System Core (Window Onload) ---
-        window.onload = async () => {
-            Swal.fire({
-                title: 'กำลังเตรียมระบบ AI',
-                html: 'กำลังโหลดข้อมูลและโมเดล AI...<br>อาจใช้เวลาสักครู่ในการเปิดครั้งแรก',
-                allowOutsideClick: false,
-                didOpen: () => {
-                    Swal.showLoading();
+                } catch (error) {
+                    console.error("Initialization Error:", error);
+                    document.getElementById('global-loader').innerHTML = `
+                        <div class="text-red-500 text-5xl mb-4"><i class="fa-solid fa-triangle-exclamation"></i></div>
+                        <h2 class="text-xl font-bold text-gray-800">เกิดข้อผิดพลาดในการโหลดระบบ</h2>
+                        <p class="text-gray-500 mt-2">${error.message || 'ไม่สามารถโหลดโมเดล AI ได้'}</p>
+                    `;
                 }
-            });
+            },
 
-            try {
-                // Sync from Google Sheet if URL exists
-                if (config.googleSheetUrl) {
-                    Swal.update({ html: 'กำลังซิงค์ข้อมูลจาก Google Sheet...' });
-                    try {
-                        const res = await fetch(config.googleSheetUrl);
-                        const data = await res.json();
-                        studentsDB = data;
-                        localStorage.setItem(DB_KEY, JSON.stringify(studentsDB)); 
-                    } catch (e) {
-                        console.error("Sheet Sync Error:", e);
-                    }
+            // --- 3. Database (LocalStorage Simulation) ---
+            loadData() {
+                const data = localStorage.getItem(DB_KEY);
+                if (data) {
+                    this.students = JSON.parse(data);
+                } else {
+                    this.students = [];
                 }
+            },
 
-                Swal.update({ html: 'กำลังโหลดโมเดล AI สำหรับสแกนหน้า...' });
-                await faceapi.nets.ssdMobilenetv1.loadFromUri(MODEL_URL);
-                await faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL);
-                await faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL);
-                isModelsLoaded = true;
-                Swal.close();
-                
-                Swal.fire({
-                    toast: true,
-                    position: 'top-end',
-                    icon: 'success',
-                    title: 'ระบบ AI พร้อมใช้งาน',
-                    showConfirmButton: false,
-                    timer: 2000
-                });
-                
-                startCamera('home-video');
-            } catch (error) {
-                console.error("Error loading models:", error);
-                Swal.fire('ข้อผิดพลาด', 'ไม่สามารถโหลดโมเดล AI ได้ โปรดตรวจสอบอินเทอร์เน็ต', 'error');
-            }
-        };
+            saveData() {
+                localStorage.setItem(DB_KEY, JSON.stringify(this.students));
+                this.buildFaceMatcher(); // Update face matcher when data changes
+            },
 
-        // --- STREAMING_CHUNK:Managing UI Views ---
-        function switchView(viewId) {
-            stopCamera();
-            
-            const views = ['view-home', 'view-register', 'view-question', 'view-admin'];
-            views.forEach(v => document.getElementById(v).classList.add('hidden'));
-            
-            if(viewId === 'view-admin-login') {
-                promptAdminLogin();
-                return;
-            }
+            // --- 4. Face API Models ---
+            async loadFaceModels() {
+                // Using reliable jsdelivr CDN for models
+                const MODEL_URL = 'https://cdn.jsdelivr.net/gh/cgarciagl/face-api.js@0.22.2/weights/';
+                await Promise.all([
+                    faceapi.nets.ssdMobilenetv1.loadFromUri(MODEL_URL),
+                    faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
+                    faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL)
+                ]);
+                this.modelsLoaded = true;
+            },
 
-            document.getElementById(viewId).classList.remove('hidden');
-
-            if (viewId === 'view-home') {
-                startCamera('home-video');
-            } else if (viewId === 'view-register') {
-                startCamera('register-video');
-                document.getElementById('register-form').reset();
-            } else if (viewId === 'view-admin') {
-                renderAdminTable();
-            }
-        }
-
-        // --- STREAMING_CHUNK:Configuring the Web Camera ---
-        async function startCamera(videoId) {
-            const videoEl = document.getElementById(videoId);
-            try {
-                const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
-                videoEl.srcObject = stream;
-                currentStream = stream;
-            } catch (err) {
-                Swal.fire('ข้อผิดพลาด', 'ไม่สามารถเข้าถึงกล้องได้ กรุณาอนุญาตการใช้งานกล้องบนเบราว์เซอร์', 'error');
-                console.error(err);
-            }
-        }
-
-        function stopCamera() {
-            if (currentStream) {
-                currentStream.getTracks().forEach(track => track.stop());
-                currentStream = null;
-            }
-        }
-
-        // --- STREAMING_CHUNK:Processing Face Registration ---
-        async function registerStudent() {
-            if (!isModelsLoaded) return Swal.fire('รอสักครู่', 'โมเดล AI ยังโหลดไม่เสร็จ', 'warning');
-
-            const id = document.getElementById('reg-id').value;
-            const name = document.getElementById('reg-name').value;
-            const room = document.getElementById('reg-room').value;
-
-            if (studentsDB.some(s => s.id === id)) {
-                return Swal.fire('เกิดข้อผิดพลาด', 'รหัสนักเรียนนี้มีการลงทะเบียนแล้ว', 'error');
-            }
-
-            Swal.fire({
-                title: 'กำลังสแกนใบหน้า...',
-                allowOutsideClick: false,
-                didOpen: () => Swal.showLoading()
-            });
-
-            const video = document.getElementById('register-video');
-            
-            try {
-                const detection = await faceapi.detectSingleFace(video).withFaceLandmarks().withFaceDescriptor();
-                
-                if (!detection) {
-                    Swal.fire('ไม่พบใบหน้า', 'กรุณามองกล้องให้ชัดเจน ไม่มีสิ่งกีดขวาง', 'warning');
+            // สร้าง FaceMatcher จากข้อมูลนักเรียนในระบบ
+            buildFaceMatcher() {
+                if (this.students.length === 0) {
+                    this.faceMatcher = null;
                     return;
                 }
 
-                const studentData = {
-                    id: id,
-                    name: name,
-                    room: room,
-                    descriptor: Array.from(detection.descriptor) 
-                };
-
-                // Push to Google Sheet if configured
-                if (config.googleSheetUrl) {
-                    await fetch(config.googleSheetUrl, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-                        body: JSON.stringify({ action: 'add', data: studentData })
-                    });
-                }
-
-                studentsDB.push(studentData);
-                localStorage.setItem(DB_KEY, JSON.stringify(studentsDB));
-
-                Swal.fire({
-                    icon: 'success',
-                    title: 'ลงทะเบียนสำเร็จ!',
-                    text: `บันทึกข้อมูลของ ${name} เรียบร้อยแล้ว`,
-                    confirmButtonColor: '#ec4899'
-                }).then(() => {
-                    switchView('view-home');
+                const labeledDescriptors = this.students.map(student => {
+                    // Convert back Array to Float32Array
+                    const descriptor = new Float32Array(student.descriptorArray);
+                    return new faceapi.LabeledFaceDescriptors(student.id, [descriptor]);
                 });
 
-            } catch (error) {
-                console.error(error);
-                Swal.fire('ข้อผิดพลาด', 'เกิดข้อผิดพลาดในการประมวลผลใบหน้า', 'error');
-            }
-        }
+                // distance threshold = 0.5 (ยิ่งน้อยยิ่งเข้มงวด 0.6 คือค่าเริ่มต้น)
+                this.faceMatcher = new faceapi.FaceMatcher(labeledDescriptors, 0.5); 
+            },
 
-        // --- STREAMING_CHUNK:Running Face Authentication ---
-        async function startFaceScan() {
-            if (studentsDB.length === 0) {
-                return Swal.fire('ข้อมูลว่างเปล่า', 'ยังไม่มีข้อมูลนักเรียนในระบบ กรุณาลงทะเบียนก่อน', 'info');
-            }
+            // --- STREAMING_CHUNK:View Navigation Logic ---
+            navigate(viewId) {
+                // Stop any running camera streams when navigating away
+                this.stopCamera();
 
-            Swal.fire({
-                title: 'กำลังตรวจสอบใบหน้า',
-                allowOutsideClick: false,
-                didOpen: () => Swal.showLoading()
-            });
-
-            const video = document.getElementById('home-video');
-
-            try {
-                const detection = await faceapi.detectSingleFace(video).withFaceLandmarks().withFaceDescriptor();
+                const sections = document.querySelectorAll('.view-section');
+                sections.forEach(sec => sec.classList.remove('active'));
                 
-                if (!detection) {
-                    return Swal.fire('ไม่พบใบหน้า', 'กรุณาขยับหน้าให้อยู่ในกรอบและมองกล้องให้ชัดเจน', 'warning');
+                document.getElementById('view-' + viewId).classList.add('active');
+
+                // Logic เฉพาะของแต่ละหน้า
+                if (viewId === 'admin-dashboard') {
+                    this.renderStudentTable();
+                } else if (viewId === 'admin-login') {
+                    document.getElementById('admin-pin').value = '';
+                } else if (viewId === 'student-assessment') {
+                    document.getElementById('assessment-text').value = '';
+                }
+            },
+
+            // --- 5. Camera Handling ---
+            async startCamera(videoElementId) {
+                const videoEl = document.getElementById(videoElementId);
+                try {
+                    const stream = await navigator.mediaDevices.getUserMedia({ 
+                        video: { facingMode: 'user' }, 
+                        audio: false 
+                    });
+                    videoEl.srcObject = stream;
+                    this.currentStream = stream;
+                    
+                    return new Promise((resolve) => {
+                        videoEl.onloadedmetadata = () => {
+                            videoEl.play();
+                            resolve(videoEl);
+                        };
+                    });
+                } catch (err) {
+                    Swal.fire('ข้อผิดพลาด', 'ไม่สามารถเข้าถึงกล้องได้ กรุณาอนุญาตการใช้งานกล้อง', 'error');
+                    throw err;
+                }
+            },
+
+            stopCamera() {
+                if (this.currentStream) {
+                    this.currentStream.getTracks().forEach(track => track.stop());
+                    this.currentStream = null;
+                }
+                if (this.scanInterval) {
+                    clearInterval(this.scanInterval);
+                    this.scanInterval = null;
+                }
+            },
+
+            // --- STREAMING_CHUNK:Student Face Scan Feature ---
+            async startStudentScan() {
+                if (this.students.length === 0) {
+                    Swal.fire('แจ้งเตือน', 'ยังไม่มีข้อมูลนักเรียนในระบบ กรุณาติดต่อแอดมิน', 'warning');
+                    return;
+                }
+                
+                this.navigate('student-scan');
+                const videoEl = await this.startCamera('video-element');
+                const canvasEl = document.getElementById('overlay-canvas');
+                
+                const displaySize = { width: videoEl.videoWidth, height: videoEl.videoHeight };
+                faceapi.matchDimensions(canvasEl, displaySize);
+
+                let isDetecting = false;
+                const statusEl = document.getElementById('scan-status');
+                statusEl.textContent = 'กำลังสแกนใบหน้า...';
+
+                this.scanInterval = setInterval(async () => {
+                    if (isDetecting) return;
+                    isDetecting = true;
+
+                    try {
+                        const detection = await faceapi.detectSingleFace(videoEl)
+                                                        .withFaceLandmarks()
+                                                        .withFaceDescriptor();
+
+                        const ctx = canvasEl.getContext('2d');
+                        ctx.clearRect(0, 0, canvasEl.width, canvasEl.height);
+
+                        if (detection) {
+                            const resizedDetection = faceapi.resizeResults(detection, displaySize);
+                            faceapi.draw.drawDetections(canvasEl, resizedDetection);
+
+                            if (this.faceMatcher) {
+                                const bestMatch = this.faceMatcher.findBestMatch(detection.descriptor);
+                                
+                                if (bestMatch.label !== 'unknown' && bestMatch.distance < 0.5) {
+                                    // Found a match
+                                    this.stopCamera(); // Pause scanning
+                                    ctx.clearRect(0, 0, canvasEl.width, canvasEl.height);
+                                    
+                                    const student = this.students.find(s => s.id === bestMatch.label);
+                                    this.confirmStudentIdentity(student);
+                                    return; // Stop interval loop completely for now
+                                }
+                            }
+                        }
+                    } catch (error) {
+                        console.error(error);
+                    }
+                    isDetecting = false;
+                }, 500); // Scan every 500ms
+            },
+
+            stopStudentScan() {
+                this.stopCamera();
+                this.navigate('home');
+            },
+
+            confirmStudentIdentity(student) {
+                Swal.fire({
+                    title: 'ยืนยันตัวตน',
+                    html: `หนูคือ <b>${student.name}</b><br>ชั้น <b>${student.classroom}</b> ใช่หรือไม่?`,
+                    icon: 'question',
+                    showCancelButton: true,
+                    confirmButtonColor: '#ec4899', // Pink
+                    cancelButtonColor: '#6b7280',  // Gray
+                    confirmButtonText: 'ใช่, เข้าสู่ระบบ',
+                    cancelButtonText: 'ไม่ใช่, สแกนใหม่',
+                    allowOutsideClick: false
+                }).then((result) => {
+                    if (result.isConfirmed) {
+                        this.activeStudent = student;
+                        document.getElementById('display-student-name').textContent = student.name;
+                        document.getElementById('display-student-class').textContent = student.classroom;
+                        this.navigate('student-assessment');
+                    } else {
+                        // Restart scan
+                        this.startStudentScan();
+                    }
+                });
+            },
+
+            // --- STREAMING_CHUNK:Student Assessment & Gemini Logic ---
+            cancelAssessment() {
+                this.activeStudent = null;
+                this.navigate('home');
+            },
+
+            async submitAssessment() {
+                const text = document.getElementById('assessment-text').value.trim();
+                if (!text) {
+                    Swal.fire('แจ้งเตือน', 'กรุณาพิมพ์ความรู้สึกของหนูก่อนกดส่งนะคะ', 'warning');
+                    return;
                 }
 
-                const labeledDescriptors = studentsDB.map(student => {
-                    const descFloat32 = new Float32Array(student.descriptor);
-                    return new faceapi.LabeledFaceDescriptors(student.id, [descFloat32]);
+                // Show Loading
+                Swal.fire({
+                    title: 'กำลังส่งข้อมูล...',
+                    html: 'ให้ AI ช่วยวิเคราะห์ความรู้สึกสักครู่นะคะ',
+                    allowOutsideClick: false,
+                    didOpen: () => {
+                        Swal.showLoading();
+                    }
                 });
 
-                const faceMatcher = new faceapi.FaceMatcher(labeledDescriptors, 0.55);
-                const bestMatch = faceMatcher.findBestMatch(detection.descriptor);
+                try {
+                    // Call Gemini AI
+                    const systemPrompt = `You are a mental health screening assistant for a school. 
+                        Analyze the following text written by a student in Thai.
+                        Determine if the student is at risk for mental health issues (e.g., sadness, depression, stress, bullying, self-harm, severe anxiety).
+                        Respond ONLY with a valid JSON object using this exact schema:
+                        {
+                            "risk": boolean,
+                            "reason": "brief explanation in Thai of why they are at risk or why they are fine"
+                        }`;
 
-                if (bestMatch.label !== 'unknown' && bestMatch.distance < 0.55) {
-                    currentStudent = studentsDB.find(s => s.id === bestMatch.label);
+                    const payload = {
+                        contents: [{ parts: [{ text: text }] }],
+                        systemInstruction: { parts: [{ text: systemPrompt }] },
+                        generationConfig: { 
+                            responseMimeType: "application/json" 
+                        }
+                    };
+
+                    const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`;
                     
+                    const response = await fetch(apiUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+
+                    if (!response.ok) throw new Error("API call failed");
+                    
+                    const result = await response.json();
+                    
+                    // Parse Gemini Output
+                    let aiData = { risk: false, reason: "" };
+                    try {
+                        const jsonString = result.candidates[0].content.parts[0].text;
+                        aiData = JSON.parse(jsonString);
+                    } catch (parseErr) {
+                        console.error("Failed to parse Gemini response", parseErr);
+                        throw new Error("AI ตอบกลับมาในรูปแบบที่ไม่ถูกต้อง");
+                    }
+
+                    // Check Risk & Telegram Alert
+                    if (aiData.risk === true) {
+                        await this.sendTelegramAlert(this.activeStudent, text, aiData.reason);
+                    }
+
+                    // Success Feedback to Student
                     Swal.fire({
                         icon: 'success',
-                        title: 'ยืนยันตัวตนสำเร็จ',
-                        text: `สวัสดี ${currentStudent.name}`,
-                        timer: 1500,
-                        showConfirmButton: false
+                        title: 'ขอบคุณที่แบ่งปันความรู้สึกค่ะ',
+                        text: 'ครูได้รับข้อความของหนูแล้ว ขอให้วันนี้เป็นวันที่ดีนะคะ ❤️',
+                        confirmButtonColor: '#ec4899',
+                        confirmButtonText: 'กลับหน้าหลัก'
                     }).then(() => {
-                        document.getElementById('display-student-name').innerText = `สวัสดี, ${currentStudent.name}`;
-                        document.getElementById('display-student-room').innerText = currentStudent.room;
-                        document.getElementById('display-student-id').innerText = currentStudent.id;
-                        document.getElementById('student-feeling').value = ''; 
-                        switchView('view-question');
+                        this.activeStudent = null;
+                        this.navigate('home');
                     });
-                } else {
-                    Swal.fire('ไม่รู้จักใบหน้านี้', 'ไม่พบข้อมูลใบหน้านี้ในระบบ กรุณาลงทะเบียนหรือลองใหม่อีกครั้ง', 'error');
-                }
 
-            } catch (error) {
-                console.error(error);
-                Swal.fire('ข้อผิดพลาด', 'ระบบประมวลผลใบหน้าขัดข้อง', 'error');
-            }
-        }
-
-        // --- STREAMING_CHUNK:Calling Gemini AI and Telegram ---
-        async function submitFeeling() {
-            const text = document.getElementById('student-feeling').value.trim();
-            if (!text) {
-                return Swal.fire('แจ้งเตือน', 'กรุณาระบุความรู้สึกของคุณ', 'warning');
-            }
-
-            Swal.fire({
-                title: 'กำลังส่งข้อมูล...',
-                text: 'ระบบกำลังประมวลผลความรู้สึกของคุณ',
-                allowOutsideClick: false,
-                didOpen: () => Swal.showLoading()
-            });
-
-            let isAtRisk = false;
-            let aiReason = "";
-
-            if (config.geminiApiKey) {
-                try {
-                    const prompt = `วิเคราะห์ข้อความต่อไปนี้ของนักเรียนว่ามีแนวโน้มความเสี่ยงด้านสุขภาพจิตหรือไม่ (เช่น ซึมเศร้ารุนแรง, อยากทำร้ายตัวเอง, เครียดหนัก, โดนบูลลี่, อยากตาย) 
-                    ตอบกลับในรูปแบบ JSON เท่านั้น โครงสร้าง: {"isRisk": boolean, "reason": "เหตุผลสั้นๆ ภาษาไทย"}
-                    ข้อความ: "${text}"`;
-
-                    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${config.geminiApiKey}`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            contents: [{ parts: [{ text: prompt }] }]
-                        })
-                    });
-                    const data = await res.json();
-                    
-                    // เพิ่มการดัก Error ถ้ารหัส API ของ Gemini ผิดหรือมีปัญหา
-                    if (!res.ok || data.error) {
-                        console.error('Gemini Error:', data.error);
-                        throw new Error('Gemini API ขัดข้อง หรือ Key ผิด');
-                    }
-                    
-                    if (data.candidates && data.candidates.length > 0) {
-                        let aiText = data.candidates[0].content.parts[0].text;
-                        aiText = aiText.replace(/```json/g, '').replace(/```/g, '');
-                        const resultJSON = JSON.parse(aiText);
-                        isAtRisk = resultJSON.isRisk;
-                        aiReason = resultJSON.reason;
-                    }
                 } catch (error) {
-                    console.error('AI Error (Switching to Simulation):', error);
-                    // หาก AI ผิดพลาด ให้สลับมาใช้โหมดดักคำ (Simulation) อัตโนมัติ
-                    const sim = simulateAIEvaluation(text);
-                    isAtRisk = sim.isRisk;
-                    aiReason = sim.reason;
+                    console.error("Assessment Error:", error);
+                    Swal.fire('ข้อผิดพลาด', 'ไม่สามารถประมวลผลข้อมูลได้ กรุณาลองใหม่อีกครั้ง: ' + error.message, 'error');
                 }
-            } else {
-                const sim = simulateAIEvaluation(text);
-                isAtRisk = sim.isRisk;
-                aiReason = sim.reason;
-            }
+            },
 
-            if (isAtRisk) {
-                try {
-                    await sendTelegramNotification(currentStudent, text, aiReason);
-                } catch (error) {
-                    // หยุดการทำงานถ้าส่ง Telegram ไม่ผ่าน เพื่อให้แอดมินอ่านหน้าจอ Error
-                    return; 
-                }
-            }
+            // --- STREAMING_CHUNK:Telegram API Logic ---
+            async sendTelegramAlert(student, originalText, aiReason) {
+                const message = `🚨 <b>แจ้งเตือนความเสี่ยงสุขภาพจิตนักเรียน</b>\n\n` +
+                                `👤 <b>ชื่อ:</b> ${student.name}\n` +
+                                `🏫 <b>ชั้น:</b> ${student.classroom}\n` +
+                                `🆔 <b>รหัส:</b> ${student.studentId}\n\n` +
+                                `💬 <b>ข้อความของนักเรียน:</b>\n"${originalText}"\n\n` +
+                                `🤖 <b>วิเคราะห์โดย AI:</b>\n${aiReason}\n\n` +
+                                `#SriwarinCare #MentalHealthAlert`;
 
-            Swal.fire({
-                icon: 'success',
-                title: 'บันทึกข้อมูลเรียบร้อย',
-                text: 'ขอบคุณที่แบ่งปันความรู้สึกในวันนี้นะ ขอให้เป็นวันที่ดี!',
-                confirmButtonColor: '#ec4899'
-            }).then(() => {
-                currentStudent = null;
-                switchView('view-home');
-            });
-        }
-
-        // --- STREAMING_CHUNK:Simulating AI (Fallback Mode) ---
-        function simulateAIEvaluation(text) {
-            const riskKeywords = ['ตาย', 'ไม่อยากอยู่', 'เหนื่อยมาก', 'ร้องไห้', 'เศร้า', 'โดนแกล้ง', 'เครียด', 'ทรมาน'];
-            const foundRisk = riskKeywords.some(keyword => text.includes(keyword));
-            return {
-                isRisk: foundRisk,
-                reason: foundRisk ? "[ระบบสำรอง] ตรวจพบคำที่แสดงถึงความเสี่ยง (เช่น เหนื่อย, ตาย, เศร้า)" : "อารมณ์ปกติ"
-            };
-        }
-
-        // --- STREAMING_CHUNK:Sending Alert to Telegram ---
-        async function sendTelegramNotification(student, message, reason) {
-            const msg = `🚨 <b>แจ้งเตือนความเสี่ยงสุขภาพจิตนักเรียน</b>\n\n` +
-                        `👤 <b>ชื่อ:</b> ${student.name}\n` +
-                        `🏫 <b>ห้อง:</b> ${student.room}\n` +
-                        `🆔 <b>รหัส:</b> ${student.id}\n\n` +
-                        `💬 <b>ข้อความนักเรียน:</b>\n"${message}"\n\n` +
-                        `🤖 <b>AI วิเคราะห์:</b>\n${reason}`;
-
-            if (config.telegramBotToken && config.telegramChatId) {
-                try {
-                    const response = await fetch(`https://api.telegram.org/bot${config.telegramBotToken}/sendMessage`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            chat_id: String(config.telegramChatId).trim(),
-                            text: msg,
-                            parse_mode: 'HTML'
-                        })
-                    });
-                    
-                    const data = await response.json();
-                    
-                    if (!response.ok) {
-                        console.error('Telegram API Error:', data);
-                        Swal.fire({
-                            icon: 'error',
-                            title: 'แจ้งผู้พัฒนา: Telegram ขัดข้อง',
-                            html: `<b>ส่งแจ้งเตือนไม่สำเร็จ</b><br><br>สาเหตุ: ${data.description}<br><br><span class="text-sm text-red-500">กรุณาตรวจสอบให้แน่ใจว่า: <br>1. Chat ID ถูกต้อง<br>2. คุณได้ทักแชทบอทไปก่อนแล้วอย่างน้อย 1 ครั้ง</span>`
-                        });
-                        throw new Error(data.description);
-                    }
-                } catch (error) {
-                    if(!Swal.isVisible()) {
-                        Swal.fire('ข้อผิดพลาด', 'ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ Telegram ได้', 'error');
-                    }
-                    throw error;
-                }
-            } else {
-                console.log("=== SIMULATED TELEGRAM NOTIFICATION ===");
-                console.log(msg.replace(/<[^>]*>?/gm, '')); 
+                const url = `https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`;
                 
-                await Swal.fire({
-                    icon: 'warning',
-                    title: 'โหมดจำลอง (ยังไม่ได้ใส่ API)',
-                    text: 'ตรวจพบความเสี่ยง! ระบบได้จำลองการส่งข้อมูลไปหาครูแนะแนวแล้ว',
-                    confirmButtonText: 'รับทราบ'
+                await fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        chat_id: TELEGRAM_CHAT_ID,
+                        text: message,
+                        parse_mode: 'HTML'
+                    })
                 });
-            }
-        }
+            },
 
-        // --- STREAMING_CHUNK:Verifying Admin Auth Backend ---
-        function promptAdminLogin() {
-            Swal.fire({
-                title: 'เข้าสู่ระบบผู้ดูแลระบบ',
-                input: 'password',
-                inputLabel: 'กรุณากรอกรหัส PIN',
-                inputPlaceholder: 'PIN',
-                inputAttributes: {
-                    maxlength: 10,
-                    autocapitalize: 'off',
-                    autocorrect: 'off'
-                },
-                showCancelButton: true,
-                confirmButtonText: 'เข้าสู่ระบบ',
-                cancelButtonText: 'ยกเลิก',
-                confirmButtonColor: '#1e3a8a',
-                showLoaderOnConfirm: true,
-                preConfirm: async (pin) => {
-                    if (!config.googleSheetUrl) {
-                        if (pin === '999999') return true;
-                        Swal.showValidationMessage('รหัส PIN ไม่ถูกต้อง (โหมดจำลองใช้ 999999)');
-                        return false;
-                    }
+            // --- STREAMING_CHUNK:Admin CRUD Logic ---
+            loginAdmin() {
+                const pin = document.getElementById('admin-pin').value;
+                if (pin === ADMIN_PIN) {
+                    this.navigate('admin-dashboard');
+                } else {
+                    Swal.fire('ผิดพลาด', 'รหัส PIN ไม่ถูกต้อง', 'error');
+                }
+            },
+
+            renderStudentTable() {
+                const tbody = document.getElementById('student-table-body');
+                const emptyState = document.getElementById('empty-student-state');
+                
+                tbody.innerHTML = '';
+
+                if (this.students.length === 0) {
+                    emptyState.classList.remove('hidden');
+                } else {
+                    emptyState.classList.add('hidden');
                     
-                    try {
-                        const response = await fetch(config.googleSheetUrl, {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-                            body: JSON.stringify({ action: 'verify_pin', data: { pin: pin } })
-                        });
-                        const data = await response.json();
-                        
-                        if (!data.success) {
-                            Swal.showValidationMessage(data.message || 'รหัส PIN ไม่ถูกต้อง');
-                            return false;
-                        }
-                        return true; 
-                    } catch (error) {
-                        Swal.showValidationMessage(`การเชื่อมต่อระบบหลังบ้านขัดข้อง`);
-                        return false;
+                    this.students.forEach(student => {
+                        const tr = document.createElement('tr');
+                        tr.innerHTML = `
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${student.studentId}</td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${student.name}</td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${student.classroom}</td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-green-500"><i class="fa-solid fa-check-circle"></i> บันทึกแล้ว</td>
+                            <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                                <button onclick="app.deleteStudent('${student.id}')" class="text-red-600 hover:text-red-900 bg-red-50 p-2 rounded-lg transition"><i class="fa-solid fa-trash-can"></i> ลบ</button>
+                            </td>
+                        `;
+                        tbody.appendChild(tr);
+                    });
+                }
+            },
+
+            deleteStudent(id) {
+                Swal.fire({
+                    title: 'ยืนยันการลบข้อมูล?',
+                    text: "คุณไม่สามารถกู้คืนข้อมูลนี้ได้!",
+                    icon: 'warning',
+                    showCancelButton: true,
+                    confirmButtonColor: '#ef4444',
+                    cancelButtonColor: '#6b7280',
+                    confirmButtonText: 'ลบข้อมูล',
+                    cancelButtonText: 'ยกเลิก'
+                }).then((result) => {
+                    if (result.isConfirmed) {
+                        this.students = this.students.filter(s => s.id !== id);
+                        this.saveData();
+                        this.renderStudentTable();
+                        Swal.fire('ลบสำเร็จ!', 'ข้อมูลนักเรียนถูกลบแล้ว', 'success');
                     }
-                },
-                allowOutsideClick: () => !Swal.isLoading()
-            }).then((result) => {
-                if (result.isConfirmed && result.value) {
-                    switchView('view-admin');
+                });
+            },
+
+            // --- STREAMING_CHUNK:Admin Register Face Logic ---
+            async openRegisterFace() {
+                this.navigate('admin-register');
+                
+                // Clear Form
+                document.getElementById('reg-student-id').value = '';
+                document.getElementById('reg-classroom').value = '';
+                document.getElementById('reg-name').value = '';
+                
+                const statusEl = document.getElementById('reg-face-status');
+                statusEl.innerHTML = '<span class="text-red-500 font-medium"><i class="fa-solid fa-circle-xmark mr-1"></i> ยังไม่ได้บันทึกใบหน้า</span>';
+
+                await this.startCamera('admin-video-element');
+            },
+
+            closeRegisterFace() {
+                this.stopCamera();
+                this.navigate('admin-dashboard');
+            },
+
+            async captureAndSaveFace() {
+                const studentId = document.getElementById('reg-student-id').value.trim();
+                const classroom = document.getElementById('reg-classroom').value.trim();
+                const name = document.getElementById('reg-name').value.trim();
+
+                if (!studentId || !classroom || !name) {
+                    Swal.fire('กรอกข้อมูลไม่ครบ', 'กรุณากรอก รหัสนักเรียน, ห้องเรียน และ ชื่อ-นามสกุล ให้ครบถ้วน', 'warning');
+                    return;
+                }
+
+                const btn = document.getElementById('btn-capture-face');
+                const originalText = btn.innerHTML;
+                btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i> กำลังสแกน...';
+                btn.disabled = true;
+
+                try {
+                    const videoEl = document.getElementById('admin-video-element');
+                    const canvasEl = document.getElementById('admin-overlay-canvas');
+                    
+                    const displaySize = { width: videoEl.videoWidth, height: videoEl.videoHeight };
+                    faceapi.matchDimensions(canvasEl, displaySize);
+
+                    // Detect face
+                    const detection = await faceapi.detectSingleFace(videoEl).withFaceLandmarks().withFaceDescriptor();
+
+                    if (!detection) {
+                        throw new Error('ไม่พบใบหน้า กรุณามองที่กล้องให้ชัดเจนและอยู่ในสภาพแสงที่เพียงพอ');
+                    }
+
+                    // Draw box briefly to show success
+                    const resizedDetection = faceapi.resizeResults(detection, displaySize);
+                    faceapi.draw.drawDetections(canvasEl, resizedDetection);
+
+                    // Create student object
+                    const newStudent = {
+                        id: 'USER_' + Date.now().toString(),
+                        studentId: studentId,
+                        name: name,
+                        classroom: classroom,
+                        // Float32Array cannot be directly stringified to JSON well, map to standard array
+                        descriptorArray: Array.from(detection.descriptor) 
+                    };
+
+                    // Save to DB
+                    this.students.push(newStudent);
+                    this.saveData();
+
+                    const statusEl = document.getElementById('reg-face-status');
+                    statusEl.innerHTML = '<span class="text-green-600 font-bold"><i class="fa-solid fa-circle-check mr-1"></i> บันทึกใบหน้าสำเร็จ</span>';
+
                     Swal.fire({
-                        toast: true, position: 'top-end', icon: 'success', title: 'เข้าสู่ระบบสำเร็จ', showConfirmButton: false, timer: 1500
+                        icon: 'success',
+                        title: 'ลงทะเบียนสำเร็จ',
+                        text: `เพิ่มข้อมูลของ ${name} เรียบร้อยแล้ว`,
+                        confirmButtonText: 'ตกลง',
+                        confirmButtonColor: '#3b82f6'
+                    }).then(() => {
+                        this.closeRegisterFace();
                     });
+
+                } catch (error) {
+                    Swal.fire('ข้อผิดพลาด', error.message, 'error');
+                } finally {
+                    btn.innerHTML = originalText;
+                    btn.disabled = false;
                 }
-            });
-        }
-
-        // --- STREAMING_CHUNK:Rendering Admin CRUD Table ---
-        function renderAdminTable() {
-            const tbody = document.getElementById('admin-table-body');
-            tbody.innerHTML = '';
-
-            if (studentsDB.length === 0) {
-                tbody.innerHTML = `<tr><td colspan="4" class="p-4 text-center text-gray-500">ยังไม่มีข้อมูลนักเรียน</td></tr>`;
-                return;
             }
+        };
 
-            studentsDB.forEach((student) => {
-                const tr = document.createElement('tr');
-                tr.className = "border-b hover:bg-gray-50 transition";
-                tr.innerHTML = `
-                    <td class="p-4">${student.id}</td>
-                    <td class="p-4 font-medium">${student.name}</td>
-                    <td class="p-4">${student.room}</td>
-                    <td class="p-4 text-center">
-                        <button onclick="editStudent('${student.id}')" class="text-blue-500 hover:text-blue-700 mx-2 p-2" title="แก้ไขชื่อ/ห้อง">
-                            <i class="fa-solid fa-pen"></i>
-                        </button>
-                        <button onclick="deleteStudent('${student.id}')" class="text-red-500 hover:text-red-700 mx-2 p-2" title="ลบข้อมูล">
-                            <i class="fa-solid fa-trash"></i>
-                        </button>
-                    </td>
-                `;
-                tbody.appendChild(tr);
-            });
-        }
+        // Initialize App when DOM is loaded
+        window.addEventListener('DOMContentLoaded', () => {
+            app.init();
+        });
 
-        // --- STREAMING_CHUNK:Updating Student Data (Edit) ---
-        function editStudent(id) {
-            const student = studentsDB.find(s => s.id === id);
-            if(!student) return;
-
-            Swal.fire({
-                title: 'แก้ไขข้อมูลนักเรียน',
-                html:
-                    `<input id="swal-edit-name" class="swal2-input" placeholder="ชื่อ - นามสกุล" value="${student.name}">` +
-                    `<input id="swal-edit-room" class="swal2-input" placeholder="ห้องเรียน" value="${student.room}">`,
-                focusConfirm: false,
-                showCancelButton: true,
-                confirmButtonText: 'บันทึก',
-                cancelButtonText: 'ยกเลิก',
-                preConfirm: () => {
-                    return {
-                        name: document.getElementById('swal-edit-name').value,
-                        room: document.getElementById('swal-edit-room').value
-                    }
-                }
-            }).then(async (result) => {
-                if (result.isConfirmed) {
-                    Swal.fire({ title: 'กำลังบันทึก...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
-                    
-                    student.name = result.value.name;
-                    student.room = result.value.room;
-
-                    if (config.googleSheetUrl) {
-                        try {
-                            await fetch(config.googleSheetUrl, {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-                                body: JSON.stringify({ action: 'update', data: student })
-                            });
-                        } catch (e) { console.error(e); }
-                    }
-
-                    localStorage.setItem(DB_KEY, JSON.stringify(studentsDB));
-                    renderAdminTable();
-                    Swal.fire('สำเร็จ', 'อัปเดตข้อมูลแล้ว', 'success');
-                }
-            });
-        }
-
-        // --- STREAMING_CHUNK:Removing Student Data (Delete) ---
-        function deleteStudent(id) {
-            Swal.fire({
-                title: 'ยืนยันการลบ?',
-                text: "ข้อมูลใบหน้าและรายละเอียดจะถูกลบถาวร!",
-                icon: 'warning',
-                showCancelButton: true,
-                confirmButtonColor: '#d33',
-                cancelButtonColor: '#3085d6',
-                confirmButtonText: 'ใช่, ลบเลย',
-                cancelButtonText: 'ยกเลิก'
-            }).then(async (result) => {
-                if (result.isConfirmed) {
-                    Swal.fire({ title: 'กำลังลบข้อมูล...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
-
-                    if (config.googleSheetUrl) {
-                        try {
-                            await fetch(config.googleSheetUrl, {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-                                body: JSON.stringify({ action: 'delete', data: { id: id } })
-                            });
-                        } catch (e) { console.error(e); }
-                    }
-
-                    studentsDB = studentsDB.filter(s => s.id !== id);
-                    localStorage.setItem(DB_KEY, JSON.stringify(studentsDB));
-                    renderAdminTable();
-                    Swal.fire('ลบแล้ว!', 'ข้อมูลนักเรียนถูกลบออกจากระบบ', 'success');
-                }
-            });
-        }
-
-        // --- STREAMING_CHUNK:Configuring System Setup (Settings) ---
-        function showSettings() {
-            Swal.fire({
-                title: 'ตั้งค่าระบบ API & Database',
-                html:
-                    `<p class="text-sm text-gray-500 mb-4 text-left">หากเว้นว่าง ระบบจะใช้ Simulation Mode (ทำงานในเครื่อง)</p>` +
-                    `<div class="text-left mb-2 text-sm font-bold text-green-700">Google Sheet Web App URL:</div>` +
-                    `<input id="swal-sheet" class="swal2-input m-0 w-full mb-4" placeholder="https://script.google.com/..." value="${config.googleSheetUrl || ''}">` +
-                    `<div class="text-left mb-2 text-sm font-bold">Gemini API Key:</div>` +
-                    `<input id="swal-gemini" class="swal2-input m-0 w-full mb-4" placeholder="AI Key" value="${config.geminiApiKey || ''}">` +
-                    `<div class="text-left mb-2 text-sm font-bold">Telegram Bot Token:</div>` +
-                    `<input id="swal-tg-token" class="swal2-input m-0 w-full mb-4" placeholder="Bot Token" value="${config.telegramBotToken || ''}">` +
-                    `<div class="text-left mb-2 text-sm font-bold">Telegram Chat ID (ครูแนะแนว):</div>` +
-                    `<input id="swal-tg-chat" class="swal2-input m-0 w-full" placeholder="Chat ID" value="${config.telegramChatId || ''}">`,
-                focusConfirm: false,
-                showCancelButton: true,
-                confirmButtonText: 'บันทึกการตั้งค่า',
-                cancelButtonText: 'ปิด',
-                preConfirm: () => {
-                    return {
-                        googleSheetUrl: document.getElementById('swal-sheet').value.trim(),
-                        geminiApiKey: document.getElementById('swal-gemini').value.trim(),
-                        telegramBotToken: document.getElementById('swal-tg-token').value.trim(),
-                        telegramChatId: document.getElementById('swal-tg-chat').value.trim()
-                    }
-                }
-            }).then((result) => {
-                if (result.isConfirmed) {
-                    config = result.value;
-                    localStorage.setItem('sriwarin_config', JSON.stringify(config));
-                    Swal.fire('บันทึกสำเร็จ', 'อัปเดตการตั้งค่าเรียบร้อยแล้ว<br>ระบบจะรีเฟรช 1 ครั้งเพื่อซิงค์ข้อมูล', 'success').then(() => {
-                        window.location.reload(); 
-                    });
-                }
-            });
-        }
     </script>
 </body>
 </html>
