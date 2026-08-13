@@ -594,10 +594,18 @@
                         }`;
 
                     const payload = {
-                        contents: [{ parts: [{ text: text }] }],
+                        contents: [{ role: "user", parts: [{ text: text }] }],
                         systemInstruction: { parts: [{ text: systemPrompt }] },
                         generationConfig: { 
-                            responseMimeType: "application/json" 
+                            responseMimeType: "application/json",
+                            responseSchema: {
+                                type: "OBJECT",
+                                properties: {
+                                    risk: { type: "BOOLEAN" },
+                                    reason: { type: "STRING" }
+                                },
+                                required: ["risk", "reason"]
+                            }
                         }
                     };
 
@@ -609,7 +617,11 @@
                         body: JSON.stringify(payload)
                     });
 
-                    if (!response.ok) throw new Error("API call failed");
+                    if (!response.ok) {
+                        const errText = await response.text();
+                        console.error("Gemini API Error:", errText);
+                        throw new Error(`Gemini API Error: ${response.status}. โปรดตรวจสอบ API Key หรือเช็ค Console.`);
+                    }
                     
                     const result = await response.json();
                     
@@ -642,7 +654,7 @@
 
                 } catch (error) {
                     console.error("Assessment Error:", error);
-                    Swal.fire('ข้อผิดพลาด', 'ไม่สามารถประมวลผลข้อมูลได้ กรุณาลองใหม่อีกครั้ง: ' + error.message, 'error');
+                    Swal.fire('เกิดข้อผิดพลาด', 'ไม่สามารถประมวลผลข้อมูลได้: ' + error.message, 'error');
                 }
             },
 
@@ -658,15 +670,26 @@
 
                 const url = `https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`;
                 
-                await fetch(url, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        chat_id: TELEGRAM_CHAT_ID,
-                        text: message,
-                        parse_mode: 'HTML'
-                    })
-                });
+                try {
+                    const response = await fetch(url, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            chat_id: TELEGRAM_CHAT_ID,
+                            text: message,
+                            parse_mode: 'HTML'
+                        })
+                    });
+
+                    if (!response.ok) {
+                        const errText = await response.text();
+                        console.error("Telegram API Error:", errText);
+                        throw new Error(`Telegram API Error: ${response.status}`);
+                    }
+                } catch (error) {
+                    console.error("Failed to send Telegram message", error);
+                    throw new Error("ระบบ AI วิเคราะห์สำเร็จ แต่ไม่สามารถส่งแจ้งเตือนเข้า Telegram ได้");
+                }
             },
 
             // --- STREAMING_CHUNK:Admin CRUD Logic ---
